@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 
 class OmniRobotDynamic(nn.Module):
-    def __init__(self, dt=0.016, mass=5.0, inertia=0.2, L=0.2):
+    def __init__(self, dt=0.016, mass=2.8, inertia=0.2, L=0.09):
         super().__init__()
         
         # Physical Constants (Fixed)
@@ -65,27 +65,25 @@ class OmniRobotDynamic(nn.Module):
         
         return term_x + term_y + term_w
 
-    def forward(self, current_state, commands, theta):
+    def forward(self, current_state, commands):
         """
         Forward pass of the physics engine.
         
         Args:
-            current_state: Tensor (Batch, 3) -> [vx, vy, omega]
+            current_state: Tensor (Batch, 4) -> [vx, vy, omega, theta]
             commands:      Tensor (Batch, 3) -> [vx_cmd, vy_cmd, omega_cmd]
-            theta:         Tensor (Batch, 1) -> Current heading
             
         Returns:
-            next_state:    Tensor (Batch, 3) -> [vx_new, vy_new, omega_new]
-            next_theta:    Tensor (Batch, 1) -> Updated heading
+            next_state:    Tensor (Batch, 4) -> [vx_new, vy_new, omega_new, theta_new]
         """
         # Unpack Inputs
-        vx, vy, omega = current_state[:, 0], current_state[:, 1], current_state[:, 2]
+        vx, vy, omega, theta = current_state[:, 0], current_state[:, 1], current_state[:, 2], current_state[:, 3]
         cmd_vx_g, cmd_vy_g, cmd_omega_g = commands[:, 0], commands[:, 1], commands[:, 2]
         
         # 1. Transform Global Commands -> Local Body Frame
         # Note: We must use the 'theta' passed in the input to preserve gradients
         cmd_vx_local, cmd_vy_local, cmd_omega_local = self._global_to_local(
-            cmd_vx_g, cmd_vy_g, cmd_omega_g, theta.squeeze()
+            cmd_vx_g, cmd_vy_g, cmd_omega_g, theta
         )
 
         # 2. Calculate Wheel Velocities (Target vs Current)
@@ -117,11 +115,11 @@ class OmniRobotDynamic(nn.Module):
         omega_new = omega + alpha * self.dt
         
         # 6. Update Heading
-        theta_new = theta.squeeze() + omega_new * self.dt
+        theta_new = theta + omega_new * self.dt
         # Normalize angle -pi to pi
-        theta_new = torch.atan2(torch.sin(theta_new), torch.cos(theta_new)).unsqueeze(-1)
+        theta_new = torch.atan2(torch.sin(theta_new), torch.cos(theta_new))
         
         # Stack output
-        next_state = torch.stack([vx_new, vy_new, omega_new], dim=1)
+        next_state = torch.stack([vx_new, vy_new, omega_new, theta_new], dim=1)
         
-        return next_state, theta_new
+        return next_state
