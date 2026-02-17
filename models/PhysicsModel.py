@@ -1,125 +1,156 @@
 import torch
 import torch.nn as nn
-import numpy as np
+import torch.nn.functional as F
 
-class OmniRobotDynamic(nn.Module):
-    def __init__(self, dt=0.016, mass=2.8, inertia=0.2, L=0.09):
+class OmniRobotPhysics(nn.Module):
+    """
+    Physics model where:
+    - Input/Output State: [x, y, theta, VX_GLOBAL, VY_GLOBAL, omega]
+    - Commands:           [vx_local, vy_local, omega]
+    """
+    def __init__(self, device='cpu'):
         super().__init__()
+        self.device = device
         
-        # Physical Constants (Fixed)
-        self.dt = dt
-        self.M = mass
-        self.I = inertia
-        self.L = L
+        # --- 1. PHYSICS CONSTANTS ---
+        self.register_buffer('mass', torch.tensor(2.8))           # kg
+        self.register_buffer('dt', torch.tensor(0.016))           # 60Hz
+        self.register_buffer('radius', torch.tensor(0.09))        # Wheel radius
         
-        # Wheel Configuration
-        # Angles: 60, 130, 230, 300 degrees
-        self.angles_deg = torch.tensor([60.0, 130.0, 230.0, 300.0])
-        self.angles = torch.deg2rad(self.angles_deg)
-        
-        # Precompute geometry vectors for force projection
-        # Force acts perpendicular to the wheel axis (+90 degrees)
-        self.force_dirs_x = torch.cos(self.angles + torch.pi/2)
-        self.force_dirs_y = torch.sin(self.angles + torch.pi/2)
+        # --- 2. LEARNABLE PARAMETERS ---
+        self.com_offset = nn.Parameter(torch.tensor([-0.05, 0.0])) 
+        self._inertia_param = nn.Parameter(torch.tensor(0.011))
+        self._motor_gain_param = nn.Parameter(torch.tensor(25.0))
+        self._tire_grip_param = nn.Parameter(torch.tensor(15.0))
+        self._drag_viscous_param = nn.Parameter(torch.tensor([1.0, 5.0, 1.0]))
+        self._drag_coulomb_param = nn.Parameter(torch.tensor([0.5, 3.0, 0.5]))
 
-        # --- TRAINABLE PARAMETERS ---
-        # Initialize with reasonable defaults, but wrap as nn.Parameter
-        # Shape: (4,) for 4 wheels
-        self.motor_gains = nn.Parameter(torch.tensor([10.0, 10.0, 10.0, 10.0]))
-        self.friction_coeffs = nn.Parameter(torch.tensor([0.5, 0.5, 0.5, 0.5]))
+        # --- 3. KINEMATICS (Mecanum Setup) ---
+        angles_deg = torch.tensor([60., 130., 230., 300.])
+        angles_rad = torch.deg2rad(angles_deg)
+        
+        # Forces: Wheel -> Body
+        fx_dir = -torch.sin(angles_rad)
+        fy_dir = torch.cos(angles_rad)
+        torque_arm = torch.full_like(angles_rad, self.radius.item())
+        self.register_buffer('force_matrix', torch.stack([fx_dir, fy_dir, torque_arm]))
+        
+        # IK: Body Vel -> Wheel Vel
+        row_vx = -torch.sin(angles_rad)
+        row_vy = torch.cos(angles_rad)
+        row_omega = torch.full_like(angles_rad, self.radius.item())
+        self.register_buffer('ik_matrix', torch.stack([row_vx, row_vy, row_omega]).T)
+        
+        self.to(device)
 
-    def _global_to_local(self, vx_g, vy_g, omega_g, theta):
-        """
-        Differentiable global-to-local transform.
-        Args:
-            theta: Current robot heading (tensor)
-        """
-        c = torch.cos(theta)
-        s = torch.sin(theta)
-        
-        vx_local =  c * vx_g + s * vy_g
-        vy_local = -s * vx_g + c * vy_g
-        
-        # Omega is the same in both frames
-        return vx_local, vy_local, omega_g
+    # --- PROPERTIES ---
+    @property
+    def inertia(self): return F.softplus(self._inertia_param) + 1e-4
+    @property
+    def motor_gain(self): return F.softplus(self._motor_gain_param)
+    @property
+    def tire_grip(self): return F.softplus(self._tire_grip_param)
+    @property
+    def drag_viscous(self): return F.softplus(self._drag_viscous_param)
+    @property
+    def drag_coulomb(self): return F.softplus(self._drag_coulomb_param)
 
-    def inverse_kinematics(self, vx_local, vy_local, omega):
-        """
-        Calculates wheel velocities (u_i) from robot body velocity.
-        """
-        # u_i = -sin(alpha)vx + cos(alpha)vy + L*omega
-        # We compute this for all 4 wheels at once using broadcasting
-        
-        # Shape broadcasting:
-        # vx_local: (Batch,) -> (Batch, 1)
-        # angles: (4,) -> (1, 4)
-        
-        vx = vx_local.unsqueeze(-1)
-        vy = vy_local.unsqueeze(-1)
-        w  = omega.unsqueeze(-1)
-        
-        # Wheel projection terms
-        term_x = -torch.sin(self.angles) * vx
-        term_y =  torch.cos(self.angles) * vy
-        term_w =  self.L * w
-        
-        return term_x + term_y + term_w
+    def angle_normalize(self, theta):
+        return torch.atan2(torch.sin(theta), torch.cos(theta))
 
-    def forward(self, current_state, commands):
-        """
-        Forward pass of the physics engine.
-        
-        Args:
-            current_state: Tensor (Batch, 4) -> [vx, vy, omega, theta]
-            commands:      Tensor (Batch, 3) -> [vx_cmd, vy_cmd, omega_cmd]
-            
-        Returns:
-            next_state:    Tensor (Batch, 4) -> [vx_new, vy_new, omega_new, theta_new]
-        """
-        # Unpack Inputs
-        vx, vy, omega, theta = current_state[:, 0], current_state[:, 1], current_state[:, 2], current_state[:, 3]
-        cmd_vx_g, cmd_vy_g, cmd_omega_g = commands[:, 0], commands[:, 1], commands[:, 2]
-        
-        # 1. Transform Global Commands -> Local Body Frame
-        # Note: We must use the 'theta' passed in the input to preserve gradients
-        cmd_vx_local, cmd_vy_local, cmd_omega_local = self._global_to_local(
-            cmd_vx_g, cmd_vy_g, cmd_omega_g, theta
-        )
+    def get_wheel_velocities(self, body_vel):
+        return body_vel @ self.ik_matrix.T
 
-        # 2. Calculate Wheel Velocities (Target vs Current)
-        target_wheel_vels = self.inverse_kinematics(cmd_vx_local, cmd_vy_local, cmd_omega_local)
-        current_wheel_vels = self.inverse_kinematics(vx, vy, omega)
+    def dynamics_step(self, state, cmd_velocity):
+        """
+        state: [x, y, theta, VX_GLOBAL, VY_GLOBAL, omega]
+        cmd:   [vx_local, vy_local, omega_cmd]
+        """
+        # Unpack State
+        x, y, theta = state[:, 0], state[:, 1], state[:, 2]
+        vx_world, vy_world, omega = state[:, 3], state[:, 4], state[:, 5]
         
-        # 3. Calculate Wheel Forces (The Learning Step)
-        # Force = Gain * Error - Friction * Velocity
-        velocity_errors = target_wheel_vels - current_wheel_vels
+        # ==========================================
+        # STEP 1: TRANSFORM WORLD VEL -> BODY VEL
+        # ==========================================
+        # We need Body Velocity to calculate friction and motor forces properly.
+        # Rotation Matrix R(-theta)
+        c, s = torch.cos(theta), torch.sin(theta)
         
-        # Apply parameters (Broadcasting handles Batch x 4_Wheels)
-        wheel_forces = (self.motor_gains * velocity_errors) - \
-                       (self.friction_coeffs * current_wheel_vels)
+        vx_body =  vx_world * c + vy_world * s
+        vy_body = -vx_world * s + vy_world * c
         
-        # 4. Resolve Forces to Robot Body (Forward Dynamics)
-        # Sum forces from all wheels projected onto body axes
-        fx_total = torch.sum(wheel_forces * self.force_dirs_x, dim=1)
-        fy_total = torch.sum(wheel_forces * self.force_dirs_y, dim=1)
-        torque_total = torch.sum(wheel_forces * self.L, dim=1)
+        current_body_vel = torch.stack([vx_body, vy_body, omega], dim=1)
+
+        # ==========================================
+        # STEP 2: CALCULATE FORCES (IN BODY FRAME)
+        # ==========================================
         
-        # 5. Integration (Euler)
-        # a = F/m
-        ax = fx_total / self.M
-        ay = fy_total / self.M
-        alpha = torque_total / self.I
+        # Motor Forces
+        target_wheel_vels = self.get_wheel_velocities(cmd_velocity)
+        current_wheel_vels = self.get_wheel_velocities(current_body_vel)
+        motor_force = self.motor_gain * (target_wheel_vels - current_wheel_vels)
+        F_geo = motor_force @ self.force_matrix.T
         
-        vx_new = vx + ax * self.dt
-        vy_new = vy + ay * self.dt
-        omega_new = omega + alpha * self.dt
+        # Friction & Drag
+        slip_vel = current_body_vel - cmd_velocity
+        F_geo -= self.tire_grip * slip_vel
+        F_geo -= self.drag_viscous * current_body_vel
+        F_geo -= self.drag_coulomb * torch.sign(current_body_vel)
         
-        # 6. Update Heading
-        theta_new = theta + omega_new * self.dt
-        # Normalize angle -pi to pi
-        theta_new = torch.atan2(torch.sin(theta_new), torch.cos(theta_new))
+        Fx_geo, Fy_geo, Tau_geo = F_geo[:, 0], F_geo[:, 1], F_geo[:, 2]
+
+        # Center of Mass Correction
+        dx, dy = self.com_offset[0], self.com_offset[1]
+        Tau_com = Tau_geo - (dx * Fy_geo - dy * Fx_geo)
         
-        # Stack output
-        next_state = torch.stack([vx_new, vy_new, omega_new, theta_new], dim=1)
+        acc_x_com = Fx_geo / self.mass
+        acc_y_com = Fy_geo / self.mass
+        acc_alpha = Tau_com / self.inertia
         
-        return next_state
+        # Shift Acceleration back to Geometric Center
+        omega_sq = omega ** 2
+        acc_tang_x = -acc_alpha * dy 
+        acc_tang_y =  acc_alpha * dx
+        acc_cent_x = -omega_sq * dx
+        acc_cent_y = -omega_sq * dy
+        
+        # These are the Accelerations in the BODY FRAME
+        acc_x_body = acc_x_com + acc_tang_x + acc_cent_x
+        acc_y_body = acc_y_com + acc_tang_y + acc_cent_y
+        
+        # ==========================================
+        # STEP 3: TRANSFORM BODY ACCEL -> WORLD ACCEL
+        # ==========================================
+        # Rotation Matrix R(+theta)
+        # acc_world = R * acc_body
+        
+        acc_x_world = acc_x_body * c - acc_y_body * s
+        acc_y_world = acc_x_body * s + acc_y_body * c
+
+        # ==========================================
+        # STEP 4: INTEGRATION (GLOBAL FRAME)
+        # ==========================================
+        
+        # Update Global Velocity
+        next_vx_world = vx_world + acc_x_world * self.dt
+        next_vy_world = vy_world + acc_y_world * self.dt
+        next_omega = omega + acc_alpha * self.dt
+        
+        # Update Global Position
+        next_x = x + next_vx_world * self.dt
+        next_y = y + next_vy_world * self.dt
+        
+        next_theta = theta + next_omega * self.dt
+        next_theta = self.angle_normalize(next_theta)
+        
+        return torch.stack([next_x, next_y, next_theta, next_vx_world, next_vy_world, next_omega], dim=1)
+
+    def forward(self, initial_state, command_sequence):
+        states = [initial_state]
+        curr = initial_state
+        for t in range(command_sequence.shape[1]):
+            cmd = command_sequence[:, t, :]
+            curr = self.dynamics_step(curr, cmd)
+            states.append(curr)
+        return torch.stack(states, dim=1)
