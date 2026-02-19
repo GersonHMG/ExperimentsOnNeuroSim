@@ -6,6 +6,13 @@ class WrappedDynamicsLoss(nn.Module):
         super(WrappedDynamicsLoss, self).__init__()
         
         # State Vector: [x, y, theta, vx, vy, omega]
+        # Default weights emphasize the angle (index 2) and angular velocity (index 5)
+        if weights is None:
+            weights = torch.tensor([1.0, 1.0, 10.0, 1.0, 1.0, 5.0], dtype=torch.float32)
+        
+        # Register as a PyTorch buffer so it automatically moves to the correct device (CPU/GPU)
+        # alongside the model, preventing device mismatch errors.
+        self.register_buffer('weights', weights)
 
     def wrap_angle(self, angle: torch.Tensor) -> torch.Tensor:
         """
@@ -32,5 +39,5 @@ class WrappedDynamicsLoss(nn.Module):
         squared_error = diff_wrapped ** 2
         
         # 5. Apply dimension weights and return the mean across the batch
-        weighted_squared_error = squared_error
+        weighted_squared_error = squared_error * self.weights
         return torch.mean(weighted_squared_error)
