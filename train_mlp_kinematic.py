@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader, Subset
 from datetime import datetime
 # Your imports
 from dataset.data_loader import get_trajectory_dataloaders
-from models.simple_mlp import SimpleMLP
+from models.kinematic import GrSimDynamics
 from training.auto_regressive_trainer import AutoregressiveTrainer
 from training.losses import WrappedDynamicsLoss
 
@@ -20,7 +20,7 @@ def main():
     # 1. Define hyperparameters
     horizon_steps = 10
     batch_size = 16
-    epochs = 80
+    epochs = 20
     learning_rate = 1e-3
 
     # Initialize TensorBoard Writer
@@ -42,7 +42,7 @@ def main():
     print(f"Using device: {device}")
 
     # 4. Instantiate Model and Loss Function
-    model = SimpleMLP(hidden_dim=64)
+    model = GrSimDynamics()
     loss_fn = WrappedDynamicsLoss() 
 
     # 5. Initialize the Trainer
@@ -61,7 +61,7 @@ def main():
     print("Starting training loop...")
     train_losses, val_losses = trainer.train(
         epochs=epochs, 
-        save_path="simple_mlp_dynamics.pth"
+        save_path="grsim_dynamics_network.pth"
     )
     
     # ==========================================
