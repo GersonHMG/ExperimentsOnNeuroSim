@@ -7,14 +7,14 @@ from torch.utils.data import Dataset, DataLoader, Subset
 from datetime import datetime
 # Your imports
 from dataset.data_loader import get_trajectory_dataloaders
-from models.kinematic import GrSimDynamics
+from models.dynamic import GrSimDynamics
 from training.auto_regressive_trainer import AutoregressiveTrainer
 from training.losses import WrappedDynamicsLoss
 
 # Make sure to import your evaluator! Adjust the path as needed.
 from evaluation.evaluator import TrajectoryEvaluator
 
-data_path = r"C:\Projects\Robocup\NeuroSimSSL\experiments\dataset\processed_data\data3.csv"
+data_path = r"C:\Projects\Robocup\NeuroSimSSL\experiments\dataset\processed_data_sim\random_trajectory.csv"
 
 def main():
     # 1. Define hyperparameters
@@ -70,9 +70,10 @@ def main():
     print("Running full trajectory evaluation...")
     
     # Load raw dataframe to extract a continuous chunk
-    df = pd.read_csv(data_path)
+    test_path = r"C:\Projects\Robocup\NeuroSimSSL\experiments\dataset\processed_data_sim\isolate_axis.csv"
+    df = pd.read_csv(test_path)
     start_idx = len(df) // 2 
-    eval_length = 100 
+    eval_length = 200 
     
     # Extract Ground Truth States
     # Vector: [x, y, theta, vx, vy, omega]

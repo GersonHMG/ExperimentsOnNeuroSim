@@ -23,12 +23,10 @@ class GrSimDynamics(DynamicsBase):
         # ==========================================
         # 3. Trainable Geometric Properties
         # ==========================================
-        self._robot_radius = 0.09
+        self.robot_radius = torch.tensor(0.09)
         
         # Wheel angles (alpha_1 to alpha_4) initialized to standard 45° offset (X-configuration)
-        self.wheel_angles = nn.Parameter(torch.tensor([
-            math.pi/4, 3*math.pi/4, 5*math.pi/4, 7*math.pi/4
-        ])) 
+        self.wheel_angles = torch.tensor([math.pi/4, 3*math.pi/4, 5*math.pi/4, 7*math.pi/4])
         
         # ==========================================
         # 4. Trainable Force & Friction Constraints
