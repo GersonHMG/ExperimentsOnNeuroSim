@@ -10,7 +10,7 @@ from dataset.data_loader import get_trajectory_dataloaders
 from models.dynamic import GrSimDynamics
 from training.auto_regressive_trainer import AutoregressiveTrainer
 from training.losses import WrappedDynamicsLoss
-
+from training.sMAPE import WrappedDynamicsSMAPELoss
 # Make sure to import your evaluator! Adjust the path as needed.
 from evaluation.evaluator import TrajectoryEvaluator
 
@@ -18,9 +18,9 @@ data_path = r"C:\Projects\Robocup\NeuroSimSSL\experiments\dataset\processed_data
 
 def main():
     # 1. Define hyperparameters
-    horizon_steps = 10
+    horizon_steps = 30
     batch_size = 16
-    epochs = 20
+    epochs = 50
     learning_rate = 1e-3
 
     # Initialize TensorBoard Writer
@@ -43,7 +43,7 @@ def main():
 
     # 4. Instantiate Model and Loss Function
     model = GrSimDynamics()
-    loss_fn = WrappedDynamicsLoss() 
+    loss_fn = WrappedDynamicsSMAPELoss() 
 
     # 5. Initialize the Trainer
     trainer = AutoregressiveTrainer(
@@ -127,7 +127,8 @@ def main():
         'batch_size': batch_size,
         'epochs': epochs,
         'learning_rate': learning_rate,
-        'hidden_dim': 64 
+        'hidden_dim': 64,
+        'loss_fn': 'WrappedDynamicsSMAPELoss'
     }
 
     metric_dict = {
