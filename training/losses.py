@@ -8,7 +8,7 @@ class WrappedDynamicsLoss(nn.Module):
         # State Vector: [x, y, theta, vx, vy, omega]
         # Default weights emphasize the angle (index 2) and angular velocity (index 5)
         if weights is None:
-            weights = torch.tensor([1.0, 1.0, 10.0, 1.0, 1.0, 5.0], dtype=torch.float32)
+            weights = torch.tensor([1.0, 1.0, 20.0, 1.0, 1.0, 10.0], dtype=torch.float32)
         
         # Register as a PyTorch buffer so it automatically moves to the correct device (CPU/GPU)
         # alongside the model, preventing device mismatch errors.

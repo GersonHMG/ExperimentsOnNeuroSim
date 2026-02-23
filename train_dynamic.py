@@ -43,7 +43,7 @@ def main():
 
     # 4. Instantiate Model and Loss Function
     model = GrSimDynamics()
-    loss_fn = WrappedDynamicsSMAPELoss() 
+    loss_fn = WrappedDynamicsLoss() 
 
     # 5. Initialize the Trainer
     trainer = AutoregressiveTrainer(
@@ -127,8 +127,7 @@ def main():
         'batch_size': batch_size,
         'epochs': epochs,
         'learning_rate': learning_rate,
-        'hidden_dim': 64,
-        'loss_fn': 'WrappedDynamicsSMAPELoss'
+        'loss_fn': 'WrappedDynamicsLoss'
     }
 
     metric_dict = {

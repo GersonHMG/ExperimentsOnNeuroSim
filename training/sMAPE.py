@@ -5,14 +5,6 @@ class WrappedDynamicsSMAPELoss(nn.Module):
     def __init__(self, weights=None, epsilon=1e-8):
         super(WrappedDynamicsSMAPELoss, self).__init__()
         
-        # State Vector: [x, y, theta, vx, vy, omega]
-        # Default weights emphasize the angle (index 2) and angular velocity (index 5)
-        if weights is None:
-            weights = torch.tensor([1.0, 1.0, 10.0, 1.0, 1.0, 5.0], dtype=torch.float32)
-        
-        # Register buffer for device synchronization
-        self.register_buffer('weights', weights)
-        
         # Epsilon prevents division by zero when both target and prediction are 0
         self.epsilon = epsilon
 
@@ -47,6 +39,6 @@ class WrappedDynamicsSMAPELoss(nn.Module):
         smape_raw = numerator / denominator
         
         # 6. Apply dimension weights and return the mean across the batch
-        weighted_smape = smape_raw * self.weights
+        weighted_smape = smape_raw
         
         return torch.mean(weighted_smape)
