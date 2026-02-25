@@ -1,4 +1,4 @@
-# NeuroSimSSL Experiments
+# System Identification of a Omnidirectional robot
 
 Tiny experiments for learning and evaluating robot dynamics models.
 
@@ -30,3 +30,4 @@ Model evaluation is performed by rolling out the learned dynamics model autoregr
 
 ![Rollout plot](docs/readme/sim_data.png)
 
+STOP THE AUOREGRESSIVE LOOP WHEN THE LOSS IS TO LARGE THIS IS TO AVOID UNNECESARY.
