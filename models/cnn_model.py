@@ -9,9 +9,9 @@ class CNNModel(nn.Module):
         super().__init__()
         self.dt = dt
 
-        # Total input channels = 6 (state) + 3 (cmd) = 9
+        # Total input channels = 3 (state) + 3 (cmd) = 9
         self.feature_extractor = nn.Sequential(
-            nn.Conv1d(in_channels=9, out_channels=32, kernel_size=3, padding=1),
+            nn.Conv1d(in_channels=6, out_channels=32, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
             nn.ReLU(),
@@ -58,8 +58,8 @@ class CNNModel(nn.Module):
                 - next_state_tensor (torch.Tensor): The predicted next state. 
                   Shape: (batch_size, 6)
         """
-
-        x = torch.cat([state_tensors, cmd_tensors], dim=-1)
+        velocity_tensors = state_tensors[..., 3:6]
+        x = torch.cat([velocity_tensors, cmd_tensors], dim=-1)
         # (Batch, Channels, Length)
         x = x.permute(0, 2, 1)
         out = self.cnn(x)
