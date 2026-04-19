@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm # For progress bars
 from typing import List, Tuple
+from torch.utils.tensorboard import SummaryWriter
 
 class ModelTrainer:
     def __init__(
@@ -13,7 +14,8 @@ class ModelTrainer:
         val_loader: DataLoader, 
         criterion,
         learning_rate: float = 1e-3, 
-        device: str = "cuda" if torch.cuda.is_available() else "cpu"
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        writer: SummaryWriter = None
     ):
         self.device = torch.device(device)
         self.model = model.to(self.device)
@@ -26,7 +28,7 @@ class ModelTrainer:
         self.criterion = criterion
         
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
-
+        self.writer = writer
 
     def train_epoch(self) -> float:
         self.model.train()
@@ -154,7 +156,19 @@ class ModelTrainer:
             # Record the losses for this epoch
             train_losses.append(train_loss)
             val_losses.append(val_loss)
+
+            if self.writer:
+                self.writer.add_scalar('Loss/Train', train_loss, epoch)
+                self.writer.add_scalar('Loss/Validation', val_loss, epoch)
+                self.writer.add_scalars('Loss/Combined', {
+                    'Train': train_loss,
+                    'Validation': val_loss
+                }, epoch)
+                self.writer.flush() # Forces it to write to disk immediately
             
             print(f"Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
-            
+        
+        if self.writer:
+            self.writer.close()   
+         
         return train_losses, val_losses
