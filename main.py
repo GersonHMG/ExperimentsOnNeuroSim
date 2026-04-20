@@ -17,6 +17,7 @@ hparams = {
     'learning_rate': 0.001,
     'epochs': 20,
     'curriculum': 0.75,
+    'note':'to_global'
 }
 
 dt = 0.016

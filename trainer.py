@@ -161,6 +161,8 @@ class ModelTrainer:
             val_losses.append(val_loss)
             
             if self.writer:
+                self.writer.add_scalars('Loss/Train', train_loss, epoch)
+                self.writer.add_scalars('Loss/Validation', val_loss, epoch)
                 self.writer.add_scalars('Loss/Combined', {
                     'Train': train_loss,
                     'Validation': val_loss

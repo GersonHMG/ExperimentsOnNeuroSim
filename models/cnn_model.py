@@ -37,12 +37,51 @@ class CNNModel(nn.Module):
         """Normalizes to signed angle system (-pi, pi]."""
         return torch.atan2(torch.sin(theta), torch.cos(theta))
 
+    def to_local(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Creates a rotation matrix to transform from Global to Local frame.
+        Args:
+            theta (torch.Tensor): The heading angles. Shape: (Batch, Window)
+        Returns: 
+            torch.Tensor: Rotation matrix of shape (Batch, Window, 3, 3)
+        """
+        c = torch.cos(theta)
+        s = torch.sin(theta)
+        zeros = torch.zeros_like(theta)
+        ones = torch.ones_like(theta)
+
+        # R(-theta) matrix for Global -> Local
+        row1 = torch.stack([c, s, zeros], dim=-1)
+        row2 = torch.stack([-s, c, zeros], dim=-1)
+        row3 = torch.stack([zeros, zeros, ones], dim=-1)
+        
+        return torch.stack([row1, row2, row3], dim=-2)
+    
+    def to_global(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Creates a rotation matrix to transform from Local to Global frame.
+        Args:
+            theta (torch.Tensor): The heading angles. Shape: (Batch, Window)
+        Returns: 
+            torch.Tensor: Rotation matrix of shape (Batch, Window, 3, 3)
+        """
+        c = torch.cos(theta)
+        s = torch.sin(theta)
+        zeros = torch.zeros_like(theta)
+        ones = torch.ones_like(theta)
+
+        # R(theta) matrix for Local -> Global
+        row1 = torch.stack([c, -s, zeros], dim=-1)
+        row2 = torch.stack([s, c, zeros], dim=-1)
+        row3 = torch.stack([zeros, zeros, ones], dim=-1)
+        
+        return torch.stack([row1, row2, row3], dim=-2)
 
     def forward(
         self,
         state_tensors: torch.Tensor, 
         cmd_tensors: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> State:
         """
         Forward pass to predict the next state based on historical states and commands.
         Args:
@@ -59,7 +98,13 @@ class CNNModel(nn.Module):
                   Shape: (batch_size, 6)
         """
         velocity_tensors = state_tensors[..., 3:6]
-        x = torch.cat([velocity_tensors, cmd_tensors], dim=-1)
+        theta_tensors = state_tensors[..., 2]
+
+        R_global = self.to_global(theta_tensors)
+        cmd_global_tensors = torch.matmul(R_global, cmd_tensors.unsqueeze(-1)).squeeze(-1)
+
+        x = torch.cat([velocity_tensors, cmd_global_tensors], dim=-1)
+        #x = torch.cat([velocity_tensors, cmd_tensors], dim=-1)
         # (Batch, Channels, Length)
         x = x.permute(0, 2, 1)
         out = self.cnn(x)
