@@ -13,9 +13,10 @@ test_df = pd.read_csv("dataset/processed_data_sim/isolate_axis.csv")
 hparams = {
     'window_length': 15,
     'batch_size': 32,
-    'target_length': 5,
+    'target_length': 20,
     'learning_rate': 0.001,
-    'epochs': 20
+    'epochs': 20,
+    'curriculum': 0.75,
 }
 
 dt = 0.016
@@ -55,7 +56,7 @@ trainer = ModelTrainer(
     device="cpu",
     writer=tb_writer
 )
-train_history, val_history = trainer.fit(epochs=hparams['epochs'])
+train_history, val_history = trainer.fit(epochs=hparams['epochs'], curriculum_fraction=hparams['curriculum'])
 
 # Logging
 best_val_loss = min(val_history)
