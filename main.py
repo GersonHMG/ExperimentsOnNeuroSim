@@ -18,9 +18,10 @@ hparams = {
     'target_length': 20,
     'learning_rate': 0.001,
     'epochs': 20,
-    'curriculum': 0.75
+    'curriculum': 0.75,
+    'note': 'Kinematic Model'
 }
-
+# TO DO: Try stride > 1
 dt = 0.016
 train_dataset = TrajectoryDataset(
     df, 

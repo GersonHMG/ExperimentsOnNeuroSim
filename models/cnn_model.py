@@ -1,7 +1,54 @@
 import torch
 from utils.utils import State, Command
-from typing import Tuple
 from torch import nn
+import numpy as np
+
+class KinematicModel(nn.Module):
+    def __init__(self, vmax=5.0, wmax=5.0, kp_linear=0.8, kp_angular=1.0):
+        super().__init__()
+        self.vmax = vmax
+        self.wmax = wmax
+        
+        # Register gains as buffers so they automatically move to the correct GPU/CPU device
+        self.register_buffer('kp_linear', torch.tensor(kp_linear, dtype=torch.float32))
+        self.register_buffer('kp_angular', torch.tensor(kp_angular, dtype=torch.float32))
+
+    def forward(self, v_curr: torch.Tensor, v_target: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            v_curr: Current velocities (Batch, 3) -> [vx, vy, omega]
+            v_target: Desired target velocities (Batch, 3) -> [vx_target, vy_target, omega_target]
+        Returns:
+            v_next: Physically achievable next velocities (Batch, 3)
+        """
+        # --- 1. Proportional Control Logic ---
+        # Calculate the error between where we want to be and where we are
+        error = v_target - v_curr
+        
+        # Apply the P-gain (Step = Kp * Error)
+        p_step_linear = self.kp_linear * error[:, :2]
+        p_step_angular = self.kp_angular * error[:, 2:3]
+        
+        # Calculate the requested velocity before limits are applied
+        v_req_linear = v_curr[:, :2] + p_step_linear
+        v_req_angular = v_curr[:, 2:3] + p_step_angular
+        
+        # --- 2. Kinematic Saturation ---
+        # Calculate the magnitude of the requested linear velocity
+        v_linear_norm = torch.norm(v_req_linear, dim=1, keepdim=True)
+        
+        # Find the scaling factor to keep it under vmax (preserves movement direction)
+        scale = torch.clamp(self.vmax / (v_linear_norm + 1e-8), max=1.0)
+        
+        # Scale linear velocities proportionally
+        v_next_linear = v_req_linear * scale
+        
+        # Clip angular velocity independently
+        v_next_angular = torch.clamp(v_req_angular, min=-self.wmax, max=self.wmax)
+        
+        # --- 3. Recombine and Output ---
+        return torch.cat([v_next_linear, v_next_angular], dim=1)
+
 
 class CNNModel(nn.Module):
 
@@ -23,7 +70,7 @@ class CNNModel(nn.Module):
         self.regression_head = nn.Sequential(
             nn.Flatten(),
             nn.Linear(in_features=256, out_features=128),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(in_features=128, out_features=3) 
         )
 
@@ -31,6 +78,8 @@ class CNNModel(nn.Module):
             self.feature_extractor,
             self.regression_head
         )
+
+        self.kinematic = KinematicModel()
 
     
     def wrap_angle(self, theta: torch.Tensor) -> torch.Tensor:
@@ -111,15 +160,24 @@ class CNNModel(nn.Module):
         res_vy = out[:, 1]
         res_omega = out[:, 2]
 
-        # Extract the last state
         last_state_tensor = state_tensors[:, -1, :] 
         last_cmd_tensor = cmd_tensors[:, -1, :]
-        s_k = State.from_tensor(last_state_tensor)
-        u_k = Command.from_tensor(last_cmd_tensor)
 
-        vx = s_k.vx + res_vx
-        vy = s_k.vy + res_vy
-        omega = s_k.omega + res_omega
+        # Kinematic model
+        s_k = State.from_tensor(last_state_tensor)
+        v_curr_global = last_state_tensor[:, 3:6]
+        R_local = self.to_local(s_k.theta)
+        v_curr_local = torch.matmul(R_local, v_curr_global.unsqueeze(-1)).squeeze(-1)
+        v_kinematic_local = self.kinematic(v_curr_local, last_cmd_tensor)
+        R_global = self.to_global(s_k.theta)
+        v_kinematic_global = torch.matmul(R_global, v_kinematic_local.unsqueeze(-1)).squeeze(-1)
+        kin_vx = v_kinematic_global[:, 0]
+        kin_vy = v_kinematic_global[:, 1]
+        kin_omega = v_kinematic_global[:, 2]
+
+        vx = kin_vx + res_vx 
+        vy = kin_vy + res_vy 
+        omega = kin_omega + res_omega
 
         x = s_k.x + vx*self.dt
         y = s_k.y + vy*self.dt
