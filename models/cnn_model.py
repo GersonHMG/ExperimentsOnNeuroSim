@@ -104,7 +104,6 @@ class CNNModel(nn.Module):
         cmd_global_tensors = torch.matmul(R_global, cmd_tensors.unsqueeze(-1)).squeeze(-1)
 
         x = torch.cat([velocity_tensors, cmd_global_tensors], dim=-1)
-        #x = torch.cat([velocity_tensors, cmd_tensors], dim=-1)
         # (Batch, Channels, Length)
         x = x.permute(0, 2, 1)
         out = self.cnn(x)

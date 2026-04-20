@@ -6,6 +6,8 @@ from models.cnn_model import CNNModel
 from utils.losses import WrappedAngleMSE
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
+import os
+import torch
 
 df = pd.read_csv("dataset/processed_data_sim/random_trajectory.csv")
 test_df = pd.read_csv("dataset/processed_data_sim/isolate_axis.csv")
@@ -16,8 +18,7 @@ hparams = {
     'target_length': 20,
     'learning_rate': 0.001,
     'epochs': 20,
-    'curriculum': 0.75,
-    'note':'to_global'
+    'curriculum': 0.75
 }
 
 dt = 0.016
@@ -45,7 +46,8 @@ test_loader = DataLoader(
     shuffle=False
 )
 
-log_dir = f"runs/cnn_trajectory_{datetime.now().strftime('%b%d_%H-%M-%S')}"
+curr_time = datetime.now().strftime('%b%d_%H-%M-%S')
+log_dir = f"runs/cnn_trajectory_{curr_time}"
 tb_writer = SummaryWriter(log_dir=log_dir)
 model = CNNModel(dt=dt)
 trainer = ModelTrainer(
@@ -57,6 +59,7 @@ trainer = ModelTrainer(
     device="cpu",
     writer=tb_writer
 )
+
 train_history, val_history = trainer.fit(epochs=hparams['epochs'], curriculum_fraction=hparams['curriculum'])
 
 # Logging
@@ -73,3 +76,8 @@ tb_writer.add_hparams(
 )
 
 tb_writer.close()
+
+
+os.makedirs("saved_models", exist_ok=True)
+save_path = f"saved_models/cnn_last_{curr_time}.pth"
+torch.save(model.state_dict(), save_path)

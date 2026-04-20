@@ -5,21 +5,22 @@ from typing import Tuple
 from utils.utils import State, Command
 
 class TrajectoryDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, window_length: int, target_length: int):
+    def __init__(self, df: pd.DataFrame, window_length: int, target_length: int, stride: int = 1):
         """
         Args:
             df: The trajectory dataframe.
             window_length: How many historical steps to use as input.
-            target_length: How many future steps to predict (the autoregressive horizon).
+            target_length: How many future steps to predict.
+            stride: How many rows to skip between each sample sequence.
         """
         self.window_length = window_length
         self.target_length = target_length
+        self.stride = stride
         
-        # The total sequence length needed for one sample
         self.total_seq_len = window_length + target_length
         
-        # Adjust total samples so we don't index out of bounds at the end of the dataframe
-        self.num_samples = len(df) - self.total_seq_len + 1
+        # Adjust total samples calculation to account for the stride jump
+        self.num_samples = (len(df) - self.total_seq_len) // self.stride + 1
         
         if self.num_samples <= 0:
             raise ValueError(
@@ -37,24 +38,17 @@ class TrajectoryDataset(Dataset):
         return self.num_samples
 
     def __getitem__(self, idx: int) -> Tuple[State, Command, State, Command]:
-        """
-        Retrieves a historical sequence and a future target sequence.
         
-        Returns:
-            input_states: Historical states shape (window_length,)
-            input_cmds: Historical commands shape (window_length,)
-            target_states: Future ground-truth states shape (target_length,)
-            future_cmds: Future planned commands shape (target_length,)
-        """
-        # Calculate the split indices
-        mid_idx = idx + self.window_length
+        # Calculate the actual starting row in the dataframe based on the stride
+        start_idx = idx * self.stride
+        
+        mid_idx = start_idx + self.window_length
         end_idx = mid_idx + self.target_length
         
-        # Slice the historical inputs
-        raw_input_state = self.state_data[idx:mid_idx]
-        raw_input_cmd = self.cmd_data[idx:mid_idx]
+        # Slice using the strided indices
+        raw_input_state = self.state_data[start_idx:mid_idx]
+        raw_input_cmd = self.cmd_data[start_idx:mid_idx]
         
-        # Slice the future targets (and the future commands driving them)
         raw_target_state = self.state_data[mid_idx:end_idx]
         raw_future_cmd = self.cmd_data[mid_idx:end_idx]
         
