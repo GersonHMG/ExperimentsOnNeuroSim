@@ -14,17 +14,18 @@ test_df = pd.read_csv("dataset/processed_data_sim/isolate_axis.csv")
 
 hparams = {
     'window_length': 15,
-    'batch_size': 32,
-    'target_length': 20,
+    'batch_size': 64,
+    'target_length': 30,
     'learning_rate': 0.001,
-    'epochs': 20,
-    'curriculum': 0.75,
-    'note': 'Kinematic Model'
+    'epochs': 40,
+    'curriculum': 0.8,
+    'stride':1
 }
 # TO DO: Try stride > 1
 dt = 0.016
 train_dataset = TrajectoryDataset(
     df, 
+    stride=hparams['stride'],
     window_length=hparams['window_length'], 
     target_length=hparams['target_length']
 )
@@ -40,10 +41,9 @@ train_loader = DataLoader(
     batch_size=hparams['batch_size'], 
     shuffle=True
 )
-
 test_loader = DataLoader(
     test_dataset, 
-    batch_size=1, 
+    batch_size=32, 
     shuffle=False
 )
 

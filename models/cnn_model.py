@@ -62,16 +62,16 @@ class CNNModel(nn.Module):
             nn.ReLU(),
             nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.AdaptiveMaxPool1d(output_size=4) 
+            nn.AdaptiveMaxPool1d(output_size=2) 
         )
         
         # Fully connected head
         # 64 channels * 4 temporal steps = 256 input features
         self.regression_head = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(in_features=256, out_features=128),
+            nn.Linear(in_features=128, out_features=64),
             nn.Tanh(),
-            nn.Linear(in_features=128, out_features=3) 
+            nn.Linear(in_features=64, out_features=3) 
         )
 
         self.cnn = nn.Sequential(
@@ -165,19 +165,19 @@ class CNNModel(nn.Module):
 
         # Kinematic model
         s_k = State.from_tensor(last_state_tensor)
-        v_curr_global = last_state_tensor[:, 3:6]
-        R_local = self.to_local(s_k.theta)
-        v_curr_local = torch.matmul(R_local, v_curr_global.unsqueeze(-1)).squeeze(-1)
-        v_kinematic_local = self.kinematic(v_curr_local, last_cmd_tensor)
-        R_global = self.to_global(s_k.theta)
-        v_kinematic_global = torch.matmul(R_global, v_kinematic_local.unsqueeze(-1)).squeeze(-1)
-        kin_vx = v_kinematic_global[:, 0]
-        kin_vy = v_kinematic_global[:, 1]
-        kin_omega = v_kinematic_global[:, 2]
+        #v_curr_global = last_state_tensor[:, 3:6]
+        #R_local = self.to_local(s_k.theta)
+        #v_curr_local = torch.matmul(R_local, v_curr_global.unsqueeze(-1)).squeeze(-1)
+        #v_kinematic_local = self.kinematic(v_curr_local, last_cmd_tensor)
+        #R_global = self.to_global(s_k.theta)
+        #v_kinematic_global = torch.matmul(R_global, v_kinematic_local.unsqueeze(-1)).squeeze(-1)
+        #kin_vx = v_kinematic_global[:, 0]
+        #kin_vy = v_kinematic_global[:, 1]
+        #kin_omega = v_kinematic_global[:, 2]
 
-        vx = kin_vx + res_vx 
-        vy = kin_vy + res_vy 
-        omega = kin_omega + res_omega
+        vx = s_k.vx + res_vx 
+        vy = s_k.vy + res_vy 
+        omega = s_k.omega + res_omega
 
         x = s_k.x + vx*self.dt
         y = s_k.y + vy*self.dt
