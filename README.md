@@ -26,6 +26,6 @@ During training, the model is unrolled over a prediction horizon $H$, producing 
 
 ## Evaluation
 
-Model evaluation is performed by rolling out the learned dynamics model autoregressively using a sequence of control inputs. The model's predictions are compared against ground truth trajectories using metrics such as Mean Euclidean Distance Error (MEDE) for position accuracy and Mean Absolute Circular Error (MACE) for orientation accuracy.
+Model evaluation is performed by rolling out the learned dynamics model autoregressively using a sequence of control inputs. The model's predictions are compared against ground truth trajectories using metrics such as MSE.
 
 ![Rollout plot](docs/readme/sim_data.png)
