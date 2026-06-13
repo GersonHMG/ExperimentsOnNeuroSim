@@ -7,28 +7,35 @@ from typing import List, Tuple
 from torch.utils.tensorboard import SummaryWriter
 import math
 
+from typing import List, Tuple, Optional   # add Optional
+
+
 class ModelTrainer:
     def __init__(
-        self, 
-        model: nn.Module, 
-        train_loader: DataLoader, 
-        val_loader: DataLoader, 
+        self,
+        model: nn.Module,
+        train_loader: DataLoader,
+        val_loader: DataLoader,
         criterion,
-        learning_rate: float = 1e-3, 
+        learning_rate: float = 1e-3,
+        optimizer: Optional[optim.Optimizer] = None,    # NEW
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        writer: SummaryWriter = None
+        writer: SummaryWriter = None,
     ):
         self.device = torch.device(device)
         self.model = model.to(self.device)
         self.train_loader = train_loader
         self.val_loader = val_loader
-        
-        # Standard regression loss. 
-        # Note: Be careful with MSE on the `theta` angle due to the -pi/pi wrap.
-
         self.criterion = criterion
-        
-        self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+
+        # Use the caller's optimizer if provided; otherwise fall back to Adam
+        # with the given learning_rate over all model parameters.
+        self.optimizer = (
+            optimizer
+            if optimizer is not None
+            else optim.Adam(self.model.parameters(), lr=learning_rate)
+        )
+
         self.writer = writer
 
     def train_epoch(self, current_target_length: int) -> float:

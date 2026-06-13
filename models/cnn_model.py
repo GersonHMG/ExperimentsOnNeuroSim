@@ -165,15 +165,6 @@ class CNNModel(nn.Module):
 
         # Kinematic model
         s_k = State.from_tensor(last_state_tensor)
-        #v_curr_global = last_state_tensor[:, 3:6]
-        #R_local = self.to_local(s_k.theta)
-        #v_curr_local = torch.matmul(R_local, v_curr_global.unsqueeze(-1)).squeeze(-1)
-        #v_kinematic_local = self.kinematic(v_curr_local, last_cmd_tensor)
-        #R_global = self.to_global(s_k.theta)
-        #v_kinematic_global = torch.matmul(R_global, v_kinematic_local.unsqueeze(-1)).squeeze(-1)
-        #kin_vx = v_kinematic_global[:, 0]
-        #kin_vy = v_kinematic_global[:, 1]
-        #kin_omega = v_kinematic_global[:, 2]
 
         vx = s_k.vx + res_vx 
         vy = s_k.vy + res_vy 
